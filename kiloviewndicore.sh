@@ -14,7 +14,6 @@ mkdir -p "$DOWNLOAD_DIR"
 cd "$DOWNLOAD_DIR" || exit 1
 
 # === CHECK & INSTALL AVAHI-DAEMON ===
-echo "Checking if avahi-daemon is installed..."
 if ! dpkg -s avahi-daemon &> /dev/null; then
     echo "avahi-daemon not found. Installing..."
     apt update && apt install -y avahi-daemon || { echo "Failed to install avahi-daemon"; exit 1; }
@@ -26,6 +25,18 @@ fi
 if ! command -v curl &> /dev/null; then
     echo "curl not found. Installing curl..."
     apt update && apt install -y curl || { echo "curl installation failed"; exit 1; }
+else
+    echo "curl is already installed."
+fi
+
+# === CHECK IF DOCKER IS INSTALLED ===
+if ! command -v docker &> /dev/null; then
+    echo "Docker not found. Installing Docker..."
+    curl -fsSL https://get.docker.com | sh || { echo "Docker installation failed"; exit 1; }
+    systemctl start docker
+    systemctl enable docker
+else
+    echo "Docker is already installed."
 fi
 
 # === DOWNLOAD THE TAR FILE ===
@@ -46,14 +57,6 @@ tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || { echo "Extraction failed"; exit 1; }
 if [ ! -f "$EXTRACTION_DIR/$IMAGE_TAR_FILE" ]; then
     echo "Docker image tar file not found at $EXTRACTION_DIR/$IMAGE_TAR_FILE. Aborting."
     exit 1
-fi
-
-# === INSTALL DOCKER IF NOT PRESENT ===
-if ! command -v docker &> /dev/null; then
-    echo "Docker not found. Installing Docker..."
-    curl -fsSL https://get.docker.com | sh || { echo "Docker installation failed"; exit 1; }
-    systemctl start docker
-    systemctl enable docker
 fi
 
 # === LOAD DOCKER IMAGE ===

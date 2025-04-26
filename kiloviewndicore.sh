@@ -5,89 +5,63 @@ DOWNLOAD_URL="https://download.kiloview.com/NDICORE/install-kiloview-ndicore-1.1
 DOWNLOAD_DIR="/tmp/ndicore"
 TAR_FILE="$DOWNLOAD_DIR/kiloview_ndicore_1.10.0095.tar.gz"
 EXTRACTION_DIR="$DOWNLOAD_DIR/kiloview-ndicore-1.10.0095-software"
-IMAGE_TAR_FILE="image-kiloview-ndicore-1.10.0095.tar"
+IMAGE_TAR="image-kiloview-ndicore-1.10.0095.tar"
 CONTAINER_NAME="Ndicore"
 IMAGE_TAG="kiloview/ndicore:1.10.0095"
 
-# --- Helpers for checks ---
-is_installed_pkg() {
-  dpkg -s "$1" > /dev/null 2>&1
-}
+# --- 1) Install missing Debian packages (avahi-daemon, curl) in one go ---
+missing=""
+command -v avahi-daemon >/dev/null 2>&1 || missing="$missing avahi-daemon"
+command -v curl         >/dev/null 2>&1 || missing="$missing curl"
 
-cmd_exists() {
-  command -v "$1" > /dev/null 2>&1
-}
-
-# --- 1) Dependencies install only if missing ---
-
-echo "Checking avahi-daemon..."
-if ! is_installed_pkg avahi-daemon; then
-  echo " avahi-daemon not installed. Installing..."
-  apt-get update -qq && apt-get install -y avahi-daemon
+if [ -n "$missing" ]; then
+  echo "Installing missing packages:$missing"
+  apt-get update -qq
+  apt-get install -y $missing
 else
-  echo " avahi-daemon already installed."
+  echo "All required Debian packages already installed."
 fi
 
-echo "Checking curl..."
-if ! cmd_exists curl; then
-  echo " curl not installed. Installing..."
-  apt-get update -qq && apt-get install -y curl
-else
-  echo " curl already installed."
-fi
-
-echo "Checking Docker..."
-if ! cmd_exists docker; then
-  echo " Docker not installed. Installing..."
+# --- 2) Install Docker if missing ---
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker not found. Installing Docker..."
   curl -fsSL https://get.docker.com | sh
-  systemctl enable docker
-  systemctl start docker
+  systemctl enable docker >/dev/null 2>&1
+  systemctl start  docker
 else
-  echo " Docker already installed."
+  echo "Docker already installed."
 fi
 
-# --- 2) Download & extract image archive ---
-
+# --- 3) Download & extract the NDI Core archive ---
 echo "Preparing download directory..."
-mkdir -p "$DOWNLOAD_DIR"
+rm -rf "$DOWNLOAD_DIR" && mkdir -p "$DOWNLOAD_DIR"
 
 echo "Downloading NDI Core package..."
-curl -fSL "$DOWNLOAD_URL" -o "$TAR_FILE"
+curl -fSL "$DOWNLOAD_URL" -o "$TAR_FILE" || {
+  echo "ERROR: download failed"; exit 1
+}
 
-if [ ! -s "$TAR_FILE" ]; then
-  echo "ERROR: Download failed or file is empty."
-  exit 1
-fi
-
-echo "Extracting package to $DOWNLOAD_DIR..."
+echo "Extracting archive..."
 tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || {
-  echo "ERROR: Extraction failed."
-  exit 1
+  echo "ERROR: extraction failed"; exit 1
 }
 
-# --- 3) Load Docker image ---
-
-IMAGE_PATH="$EXTRACTION_DIR/$IMAGE_TAR_FILE"
+# --- 4) Load the Docker image from the extracted .tar ---
+IMAGE_PATH="$EXTRACTION_DIR/$IMAGE_TAR"
 if [ ! -f "$IMAGE_PATH" ]; then
-  echo "ERROR: Docker image archive not found at $IMAGE_PATH"
-  exit 1
+  echo "ERROR: image tar not found at $IMAGE_PATH"; exit 1
 fi
 
-echo "Loading Docker image from $IMAGE_PATH..."
-docker load -i "$IMAGE_PATH" || {
-  echo "ERROR: docker load failed."
-  exit 1
-}
+echo "Loading Docker image..."
+docker load -i "$IMAGE_PATH" || { echo "ERROR: docker load failed"; exit 1; }
 
-# --- 4) Remove old container if exists ---
-
+# --- 5) Remove any existing container ---
 if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
   echo "Removing existing container $CONTAINER_NAME..."
   docker rm -f "$CONTAINER_NAME"
 fi
 
-# --- 5) Run new container ---
-
+# --- 6) Run the new container with volumes & host networking ---
 echo "Starting container $CONTAINER_NAME..."
 docker run -d \
   --name="$CONTAINER_NAME" \
@@ -101,14 +75,10 @@ docker run -d \
   -v /upgrade:/upgrade \
   -v /root/cp_data_hardware:/app/data/ndicore \
   "$IMAGE_TAG" \
-  /usr/local/bin/ndicore_start.sh || {
-    echo "ERROR: Failed to start container."
-    exit 1
-  }
+  /usr/local/bin/ndicore_start.sh || { echo "ERROR: failed to start container"; exit 1; }
 
-# --- 6) Clean up ---
-
-echo "Cleaning up..."
+# --- 7) Cleanup ---
+echo "Cleaning up temporary files..."
 rm -rf "$DOWNLOAD_DIR"
 
-echo "Done! ✅"
+echo "Installation and setup completed successfully! 🚀"

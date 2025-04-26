@@ -9,7 +9,7 @@ IMAGE_TAR="image-kiloview-ndicore-1.10.0095.tar"
 CONTAINER_NAME="Ndicore"
 IMAGE_TAG="kiloview/ndicore:1.10.0095"
 
-# --- 1) Install missing Debian packages (avahi-daemon, curl) in one go ---
+# --- 1) Install missing Debian packages in one shot ---
 missing=""
 command -v avahi-daemon >/dev/null 2>&1 || missing="$missing avahi-daemon"
 command -v curl         >/dev/null 2>&1 || missing="$missing curl"
@@ -22,31 +22,29 @@ else
   echo "All required Debian packages already installed."
 fi
 
-# --- 2) Install Docker if missing ---
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker not found. Installing Docker..."
+# --- 2) Install Docker if missing or broken ---
+echo "Checking Docker..."
+if command -v docker >/dev/null 2>&1 && docker version >/dev/null 2>&1; then
+  echo "Docker already installed and working."
+else
+  echo "Docker not found or not functional. Installing..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker >/dev/null 2>&1
   systemctl start  docker
-else
-  echo "Docker already installed."
 fi
 
 # --- 3) Download & extract the NDI Core archive ---
 echo "Preparing download directory..."
-rm -rf "$DOWNLOAD_DIR" && mkdir -p "$DOWNLOAD_DIR"
+rm -rf "$DOWNLOAD_DIR"
+mkdir -p "$DOWNLOAD_DIR"
 
 echo "Downloading NDI Core package..."
-curl -fSL "$DOWNLOAD_URL" -o "$TAR_FILE" || {
-  echo "ERROR: download failed"; exit 1
-}
+curl -fSL "$DOWNLOAD_URL" -o "$TAR_FILE" || { echo "ERROR: download failed"; exit 1; }
 
 echo "Extracting archive..."
-tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || {
-  echo "ERROR: extraction failed"; exit 1
-}
+tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || { echo "ERROR: extraction failed"; exit 1; }
 
-# --- 4) Load the Docker image from the extracted .tar ---
+# --- 4) Load the Docker image ---
 IMAGE_PATH="$EXTRACTION_DIR/$IMAGE_TAR"
 if [ ! -f "$IMAGE_PATH" ]; then
   echo "ERROR: image tar not found at $IMAGE_PATH"; exit 1
@@ -61,7 +59,7 @@ if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
   docker rm -f "$CONTAINER_NAME"
 fi
 
-# --- 6) Run the new container with volumes & host networking ---
+# --- 6) Run the new container ---
 echo "Starting container $CONTAINER_NAME..."
 docker run -d \
   --name="$CONTAINER_NAME" \
@@ -81,4 +79,4 @@ docker run -d \
 echo "Cleaning up temporary files..."
 rm -rf "$DOWNLOAD_DIR"
 
-echo "Installation and setup completed successfully! 🚀"
+echo "Done! ✅"

@@ -1,67 +1,114 @@
-#!/bin/bash
+#!/bin/sh
 
-# Function to check if a package is installed
-check_installed() {
-    if ! dpkg -l | grep -q "$1"; then
-        return 1
-    else
-        return 0
-    fi
+# === CONFIGURATION ===
+DOWNLOAD_URL="https://download.kiloview.com/NDICORE/install-kiloview-ndicore-1.10.0095-software-20250311.tar.gz"
+DOWNLOAD_DIR="/tmp/ndicore"
+TAR_FILE="$DOWNLOAD_DIR/kiloview_ndicore_1.10.0095.tar.gz"
+EXTRACTION_DIR="$DOWNLOAD_DIR/kiloview-ndicore-1.10.0095-software"
+IMAGE_TAR_FILE="image-kiloview-ndicore-1.10.0095.tar"
+CONTAINER_NAME="Ndicore"
+IMAGE_TAG="kiloview/ndicore:1.10.0095"
+
+# --- Helpers for checks ---
+is_installed_pkg() {
+  dpkg -s "$1" > /dev/null 2>&1
 }
 
-# Check if avahi-daemon is installed
-echo "Checking if avahi-daemon is installed..."
-if ! check_installed avahi-daemon; then
-    echo "avahi-daemon not found. Installing..."
-    sudo apt-get install -y avahi-daemon
+cmd_exists() {
+  command -v "$1" > /dev/null 2>&1
+}
+
+# --- 1) Dependencies install only if missing ---
+
+echo "Checking avahi-daemon..."
+if ! is_installed_pkg avahi-daemon; then
+  echo " avahi-daemon not installed. Installing..."
+  apt-get update -qq && apt-get install -y avahi-daemon
 else
-    echo "avahi-daemon is already installed."
+  echo " avahi-daemon already installed."
 fi
 
-# Check if curl is installed
-echo "Checking if curl is installed..."
-if ! command -v curl &> /dev/null; then
-    echo "curl not found. Installing..."
-    sudo apt-get install -y curl
+echo "Checking curl..."
+if ! cmd_exists curl; then
+  echo " curl not installed. Installing..."
+  apt-get update -qq && apt-get install -y curl
 else
-    echo "curl is already installed."
+  echo " curl already installed."
 fi
 
-# Check if Docker is installed
-echo "Checking if Docker is installed..."
-if ! command -v docker &> /dev/null; then
-    echo "Docker not found. Installing..."
-    # Docker install commands
-    curl -fsSL https://get.docker.com | sh
+echo "Checking Docker..."
+if ! cmd_exists docker; then
+  echo " Docker not installed. Installing..."
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
 else
-    echo "Docker is already installed."
+  echo " Docker already installed."
 fi
 
-# Download Kiloview NDI Core package
-echo "Downloading Kiloview NDI Core package..."
-curl -L -o /tmp/kiloview-ndicore.tar.gz https://download.kiloview.com/ndicore/kiloview-ndicore-1.10.0095-software.tar.gz
+# --- 2) Download & extract image archive ---
 
-# Extract Kiloview NDI Core package
-echo "Extracting Kiloview NDI Core package..."
-tar -xvzf /tmp/kiloview-ndicore.tar.gz -C /tmp
+echo "Preparing download directory..."
+mkdir -p "$DOWNLOAD_DIR"
 
-# Load Docker image
-echo "Loading Docker image..."
-docker load < /tmp/ndicore/kiloview-ndicore-1.10.0095-software/image-kiloview-ndicore-1.10.0095.tar
+echo "Downloading NDI Core package..."
+curl -fSL "$DOWNLOAD_URL" -o "$TAR_FILE"
 
-# Create Docker container
-echo "Creating Docker container..."
+if [ ! -s "$TAR_FILE" ]; then
+  echo "ERROR: Download failed or file is empty."
+  exit 1
+fi
+
+echo "Extracting package to $DOWNLOAD_DIR..."
+tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || {
+  echo "ERROR: Extraction failed."
+  exit 1
+}
+
+# --- 3) Load Docker image ---
+
+IMAGE_PATH="$EXTRACTION_DIR/$IMAGE_TAR_FILE"
+if [ ! -f "$IMAGE_PATH" ]; then
+  echo "ERROR: Docker image archive not found at $IMAGE_PATH"
+  exit 1
+fi
+
+echo "Loading Docker image from $IMAGE_PATH..."
+docker load -i "$IMAGE_PATH" || {
+  echo "ERROR: docker load failed."
+  exit 1
+}
+
+# --- 4) Remove old container if exists ---
+
+if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  echo "Removing existing container $CONTAINER_NAME..."
+  docker rm -f "$CONTAINER_NAME"
+fi
+
+# --- 5) Run new container ---
+
+echo "Starting container $CONTAINER_NAME..."
 docker run -d \
-  --name kiloview-ndicore \
+  --name="$CONTAINER_NAME" \
+  --network host \
+  --privileged=true \
   --restart=always \
-  -p 8090:8090 \
-  -p 8350:8350 \
-  -v /tmp/ndicore/config:/app/config \
-  -v /tmp/ndicore/logs:/app/logs \
-  kiloview/ndicore:1.10.0095
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /var/run/avahi-daemon:/var/run/avahi-daemon \
+  -v /var/run/dbus:/var/run/dbus \
+  -v /opt/package:/opt/package \
+  -v /upgrade:/upgrade \
+  -v /root/cp_data_hardware:/app/data/ndicore \
+  "$IMAGE_TAG" \
+  /usr/local/bin/ndicore_start.sh || {
+    echo "ERROR: Failed to start container."
+    exit 1
+  }
 
-# Clean up temporary files
-echo "Cleaning up temporary files..."
-rm -rf /tmp/kiloview-ndicore.tar.gz /tmp/ndicore
+# --- 6) Clean up ---
 
-echo "Installation and setup completed successfully! 🚀"
+echo "Cleaning up..."
+rm -rf "$DOWNLOAD_DIR"
+
+echo "Done! ✅"

@@ -1,73 +1,88 @@
-#!/bin/sh
+#!/bin/bash
 
-# --- Color Definitions ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# === CONFIGURATION ===
+DOWNLOAD_URL="https://download.kiloview.com/NDICORE/install-kiloview-ndicore-1.10.0095-software-20250311.tar.gz"
+TAR_FILE="kiloview_ndicore_1.10.0095.tar.gz"
+DOWNLOAD_DIR="/tmp/ndicore"
+CONTAINER_NAME="Ndicore"
+IMAGE_TAG="kiloview/ndicore:1.10.0095"
+IMAGE_TAR_FILE="image-kiloview-ndicore-1.10.0095.tar"
 
-# --- Helper Functions ---
-print_ok() { echo "${GREEN}✅ $1${NC}"; }
-print_warn() { echo "${YELLOW}⚠️  $1${NC}"; }
-print_error() { echo "${RED}❌ $1${NC}"; }
+# === CREATE TEMP DIRECTORY ===
+mkdir -p "$DOWNLOAD_DIR"
+cd "$DOWNLOAD_DIR" || exit 1
 
-# --- Check if run as root ---
-if [ "$(id -u)" -ne 0 ]; then
-    print_error "This script must be run as root!"
+# === CHECK & INSTALL AVAHI-DAEMON ===
+echo "Checking if avahi-daemon is installed..."
+if ! dpkg -s avahi-daemon &> /dev/null; then
+    echo "avahi-daemon not found. Installing..."
+    apt update && apt install -y avahi-daemon || { echo "Failed to install avahi-daemon"; exit 1; }
+else
+    echo "avahi-daemon is already installed."
+fi
+
+# === INSTALL CURL IF NEEDED ===
+if ! command -v curl &> /dev/null; then
+    echo "curl not found. Installing curl..."
+    apt update && apt install -y curl || { echo "curl installation failed"; exit 1; }
+fi
+
+# === DOWNLOAD THE TAR FILE ===
+echo "Downloading Kiloview NDI Core package..."
+curl -L "$DOWNLOAD_URL" -o "$TAR_FILE" || { echo "Download failed"; exit 1; }
+
+# === VERIFY DOWNLOADED FILE ===
+if [ ! -f "$TAR_FILE" ]; then
+    echo "Downloaded file not found: $TAR_FILE"
     exit 1
 fi
 
-# --- Install avahi-daemon if missing ---
-if ! dpkg -s avahi-daemon >/dev/null 2>&1; then
-    print_warn "avahi-daemon not found. Installing..."
-    apt update && apt install -y avahi-daemon
-    print_ok "avahi-daemon installed."
-else
-    print_ok "avahi-daemon already installed."
+# === EXTRACT THE TAR FILE ===
+echo "Extracting Kiloview NDI Core package..."
+tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || { echo "Extraction failed"; exit 1; }
+
+# === CHECK FOR THE IMAGE TAR FILE ===
+if [ ! -f "$DOWNLOAD_DIR/$IMAGE_TAR_FILE" ]; then
+    echo "Docker image tar file not found after extraction. Aborting."
+    exit 1
 fi
 
-# --- Install curl if missing ---
-if ! command -v curl >/dev/null 2>&1; then
-    print_warn "curl not found. Installing..."
-    apt update && apt install -y curl
-    print_ok "curl installed."
-else
-    print_ok "curl already installed."
-fi
-
-# --- Install Docker if missing ---
-if ! command -v docker >/dev/null 2>&1; then
-    print_warn "Docker not found. Installing..."
-    curl -fsSL https://get.docker.com | sh
+# === INSTALL DOCKER IF NOT PRESENT ===
+if ! command -v docker &> /dev/null; then
+    echo "Docker not found. Installing Docker..."
+    curl -fsSL https://get.docker.com | sh || { echo "Docker installation failed"; exit 1; }
     systemctl start docker
     systemctl enable docker
-    print_ok "Docker installed."
-else
-    print_ok "Docker already installed."
 fi
 
-# --- Download the Kiloview NDI Core Docker Image ---
-TMP_DIR="/tmp/ndicore"
-IMAGE_URL="https://www.kiloview.com/download/kiloview-ndicore-1.10.0095-software.tar.gz"
+# === LOAD DOCKER IMAGE ===
+echo "Loading Docker image from $IMAGE_TAR_FILE..."
+docker load -i "$DOWNLOAD_DIR/$IMAGE_TAR_FILE" || { echo "Docker image load failed"; exit 1; }
 
-mkdir -p "$TMP_DIR"
-print_ok "Downloading Kiloview NDI Core..."
-curl -L "$IMAGE_URL" -o "$TMP_DIR/ndicore.tar.gz"
+# === REMOVE EXISTING CONTAINER (IF EXISTS) ===
+if docker ps -a --format '{{.Names}}' | grep -Eq "^$CONTAINER_NAME\$"; then
+    echo "Existing container found. Removing it..."
+    docker rm -f "$CONTAINER_NAME"
+fi
 
-# --- Extract the tar.gz ---
-print_ok "Extracting Kiloview NDI Core package..."
-tar -xzf "$TMP_DIR/ndicore.tar.gz" -C "$TMP_DIR"
+# === RUN DOCKER CONTAINER ===
+echo "Starting the Docker container..."
+docker run --name="$CONTAINER_NAME" \
+    -idt \
+    --network host \
+    --privileged=true \
+    --restart=always \
+    -v /etc/localtime:/etc/localtime:ro \
+    -v /var/run/avahi-daemon:/var/run/avahi-daemon \
+    -v /var/run/dbus:/var/run/dbus \
+    -v /opt/package:/opt/package \
+    -v /upgrade:/upgrade \
+    -v /root/cp_data_hardware:/app/data/ndicore \
+    "$IMAGE_TAG" \
+    /usr/local/bin/ndicore_start.sh || { echo "Failed to start container"; exit 1; }
 
-# --- Load Docker image ---
-print_ok "Loading Docker image into local registry..."
-docker load -i "$TMP_DIR"/kiloview-ndicore-*/image-*.tar
+# === CLEAN UP ===
+echo "Cleaning up temporary files..."
+rm -rf "$DOWNLOAD_DIR" || { echo "Failed to clean up"; exit 1; }
 
-# --- Run the container ---
-print_ok "Starting Kiloview NDI Core container..."
-docker run -d --name kiloview-ndicore --restart unless-stopped -p 80:80 kiloview/ndicore:1.10.0095
-
-# --- Clean up ---
-print_ok "Cleaning up temporary files..."
-rm -rf "$TMP_DIR"
-
-print_ok "Installation and setup completed successfully! 🚀"
+echo "Installation and setup completed successfully! 🚀"

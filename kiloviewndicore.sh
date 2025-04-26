@@ -7,6 +7,7 @@ DOWNLOAD_DIR="/tmp/ndicore"
 CONTAINER_NAME="Ndicore"
 IMAGE_TAG="kiloview/ndicore:1.10.0095"
 IMAGE_TAR_FILE="image-kiloview-ndicore-1.10.0095.tar"
+EXTRACTION_DIR="/tmp/ndicore/kiloview-ndicore-1.10.0095-software"
 
 # === CREATE TEMP DIRECTORY ===
 mkdir -p "$DOWNLOAD_DIR"
@@ -41,13 +42,9 @@ fi
 echo "Extracting Kiloview NDI Core package..."
 tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || { echo "Extraction failed"; exit 1; }
 
-# === CHECK THE CONTENTS OF THE EXTRACTED DIRECTORY ===
-echo "Checking contents of the extracted directory..."
-ls -la "$DOWNLOAD_DIR"
-
-# === CHECK FOR THE IMAGE TAR FILE ===
-if [ ! -f "$DOWNLOAD_DIR/$IMAGE_TAR_FILE" ]; then
-    echo "Docker image tar file not found after extraction. Aborting."
+# === VERIFY IMAGE TAR FILE LOCATION ===
+if [ ! -f "$EXTRACTION_DIR/$IMAGE_TAR_FILE" ]; then
+    echo "Docker image tar file not found at $EXTRACTION_DIR/$IMAGE_TAR_FILE. Aborting."
     exit 1
 fi
 
@@ -60,8 +57,8 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # === LOAD DOCKER IMAGE ===
-echo "Loading Docker image from $IMAGE_TAR_FILE..."
-docker load -i "$DOWNLOAD_DIR/$IMAGE_TAR_FILE" || { echo "Docker image load failed"; exit 1; }
+echo "Loading Docker image from $EXTRACTION_DIR/$IMAGE_TAR_FILE..."
+docker load -i "$EXTRACTION_DIR/$IMAGE_TAR_FILE" || { echo "Docker image load failed"; exit 1; }
 
 # === REMOVE EXISTING CONTAINER (IF EXISTS) ===
 if docker ps -a --format '{{.Names}}' | grep -Eq "^$CONTAINER_NAME\$"; then

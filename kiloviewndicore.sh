@@ -41,6 +41,10 @@ fi
 echo "Extracting Kiloview NDI Core package..."
 tar -xzf "$TAR_FILE" -C "$DOWNLOAD_DIR" || { echo "Extraction failed"; exit 1; }
 
+# === CHECK THE CONTENTS OF THE EXTRACTED DIRECTORY ===
+echo "Checking contents of the extracted directory..."
+ls -la "$DOWNLOAD_DIR"
+
 # === CHECK FOR THE IMAGE TAR FILE ===
 if [ ! -f "$DOWNLOAD_DIR/$IMAGE_TAR_FILE" ]; then
     echo "Docker image tar file not found after extraction. Aborting."

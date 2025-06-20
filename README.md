@@ -22,15 +22,11 @@ This script will:
 🔗 Access the Web UI
 Once installed, simply open your browser and go to:
 
-cpp
-Copia
-Modifica
+
 http://<YOUR_SERVER_IP>
 The default login is:
 
-pgsql
-Copia
-Modifica
+Default credentials:
 Username: admin
 Password: admin
 At first login, you’ll be asked to define a new password.

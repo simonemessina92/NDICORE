@@ -48,6 +48,3 @@ Kiloview is your AVoIP Trailblazer – delivering reliable, scalable and intuiti
 ❤️ Credits
 Made with 💙 by @simonemessina92
 
-yaml
-Copia
-Modifica

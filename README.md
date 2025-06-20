@@ -11,7 +11,6 @@ Paste the following command into your terminal:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/simonemessina92/NDICORE/main/NDICORE.sh)
-
 This script will:
 
 ✅ Check required dependencies (avahi-daemon, curl, docker)
@@ -23,11 +22,11 @@ This script will:
 🔗 Access the Web UI
 Once installed, simply open your browser and go to:
 
-
+Default web UI access
 http://<YOUR_SERVER_IP>
 The default login is:
 
-Default credentials:
+Default username and password
 Username: admin
 Password: admin
 At first login, you’ll be asked to define a new password.
@@ -46,3 +45,7 @@ Kiloview is your AVoIP Trailblazer – delivering reliable, scalable and intuiti
 
 ❤️ Credits
 Made with 💙 by @simonemessina92
+
+yaml
+Copia
+Modifica

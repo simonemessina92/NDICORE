@@ -10,7 +10,9 @@ NDI CORE is your flexible, powerful and scalable way to **route, manage and dist
 Paste the following command into your terminal:
 
 ```bash
+
 bash <(curl -fsSL https://raw.githubusercontent.com/simonemessina92/NDICORE/main/NDICORE.sh)
+
 This script will:
 
 ✅ Check required dependencies (avahi-daemon, curl, docker)
